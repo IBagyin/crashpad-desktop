@@ -1,0 +1,57 @@
+{
+  "name": "crashpad-desktop",
+  "version": "1.0.0",
+  "description": "CRASHPAD as a desktop app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win": "electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "app.crashpad.desktop",
+    "productName": "CRASHPAD",
+    "files": [
+      "main.js",
+      "icon.png"
+    ],
+    "afterPack": "scripts/adhoc-sign.js",
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "icon.png",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "CRASHPAD-mac-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "artifactName": "CRASHPAD-Setup.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "author": "IBagyin"
+}
