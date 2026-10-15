@@ -13,6 +13,7 @@
     "productName": "CRASHPAD",
     "files": [
       "main.js",
+      "preload.js",
       "icon.png"
     ],
     "afterPack": "scripts/adhoc-sign.js",
