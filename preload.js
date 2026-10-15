@@ -11,6 +11,8 @@ function subscribe(channel, callback) {
 contextBridge.exposeInMainWorld("crashpad", {
   processItem: (id) => ipcRenderer.invoke("process-item:start", id),
   cancelProcess: () => ipcRenderer.invoke("process-item:cancel"),
+  getOutputDir: () => ipcRenderer.invoke("process-item:get-output-dir"),
+  chooseOutputDir: () => ipcRenderer.invoke("process-item:choose-output-dir"),
   onProcessOutput: (callback) => subscribe("process-item:output", callback),
   onProcessExit: (callback) => subscribe("process-item:exit", callback),
 });

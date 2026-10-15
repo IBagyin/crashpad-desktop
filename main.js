@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, session } = require("electron");
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -88,6 +89,44 @@ function isTrustedSender(event) {
 // notifications and the rest are refused for every page, ads included.
 const ALLOWED_PERMISSIONS = new Set(["fullscreen", "mediaKeySystem", "clipboard-sanitized-write"]);
 
+// Where downloads go. The page can only open the native folder picker, never
+// hand over a path itself; the choice is kept in the app's settings file and
+// falls back to Downloads if that folder is gone.
+const settingsFile = () => path.join(app.getPath("userData"), "settings.json");
+
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(settingsFile(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveSettings(changes) {
+  fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
+  fs.writeFileSync(settingsFile(), JSON.stringify({ ...readSettings(), ...changes }, null, 2));
+}
+
+function isDirectory(dir) {
+  try {
+    return fs.statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function outputDir() {
+  const saved = readSettings().outputDir;
+  return typeof saved === "string" && isDirectory(saved) ? saved : app.getPath("downloads");
+}
+
+// Shown to the page and in prompts with the home folder as "~", so the site
+// never learns the account name.
+function displayPath(dir) {
+  const home = os.homedir();
+  return dir === home || dir.startsWith(home + path.sep) ? "~" + dir.slice(home.length) : dir;
+}
+
 let running = null;
 
 function setupProcessIpc() {
@@ -99,12 +138,14 @@ function setupProcessIpc() {
     // A native prompt the page can't draw or click itself, so nothing runs
     // unless a person at this machine agrees to it.
     const win = BrowserWindow.fromWebContents(event.sender);
+    const dir = outputDir();
     const { response } = await dialog.showMessageBox(win, {
       type: "question",
       buttons: ["Run", "Cancel"],
       defaultId: 0,
       cancelId: 1,
       message: `Run ${PROCESS_COMMAND} for ${id}?`,
+      detail: `Saves to ${displayPath(dir)}`,
     });
     if (response !== 0) throw new Error("Cancelled");
     if (running) throw new Error("A task is already running");
@@ -116,7 +157,8 @@ function setupProcessIpc() {
     // No shell: the ID reaches the tool as one literal argument, so nothing
     // in it can be read as another command.
     const targetUrl = `https://streamimdb.ru/embed/movie/${id}/`;
-    const child = spawn(PROCESS_COMMAND, [targetUrl], { env: toolEnv(), shell: false, windowsHide: true });   
+    // The tool saves into its working directory.
+    const child = spawn(PROCESS_COMMAND, [targetUrl], { cwd: dir, env: toolEnv(), shell: false, windowsHide: true });
     running = child;
 
     let finished = false;
@@ -138,6 +180,23 @@ function setupProcessIpc() {
     );
     child.on("close", (code, signal) => finish({ code, signal }));
     return true;
+  });
+
+  ipcMain.handle("process-item:get-output-dir", (event) => {
+    if (!isTrustedSender(event)) throw new Error("Not allowed from this page");
+    return displayPath(outputDir());
+  });
+
+  ipcMain.handle("process-item:choose-output-dir", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("Not allowed from this page");
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: "Choose where downloads are saved",
+      defaultPath: outputDir(),
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (!canceled && filePaths[0]) saveSettings({ outputDir: filePaths[0] });
+    return displayPath(outputDir());
   });
 
   ipcMain.handle("process-item:cancel", (event) => {
